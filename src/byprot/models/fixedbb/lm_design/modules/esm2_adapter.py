@@ -34,8 +34,11 @@ tokenizer = EsmTokenizer.from_pretrained("/hanchenchen/BACKUP_20230628/EVE/SS/ss
 
 vocab = tokenizer.get_vocab()
 t33_vocab = ['<cls>', '<pad>', '<eos>', '<unk>', 'L', 'A', 'G', 'V', 'S', 'E', 'R', 'T', 'I', 'D', 'P', 'K', 'Q', 'N', 'F', 'Y', 'M', 'H', 'W', 'C', 'X', 'B', 'U', 'Z', 'O', '.', '-', '<null_1>', '<mask>']
+taa_vocab = ['L', 'A', 'G', 'V', 'S', 'E', 'R', 'T', 'I', 'D', 'P', 'K', 'Q', 'N', 'F', 'Y', 'M', 'H', 'W', 'C']
 seq_vocab = "ACDEFGHIKLMNPQRSTVWY#"
-id_map = [seq_vocab.index(i) if i in seq_vocab else 0 for i in t33_vocab]
+aa_id_map = [seq_vocab.index(i) for i in taa_vocab]
+id_map = {t33_vocab.index(i):(vocab[i+'#'] if i in taa_vocab else (vocab[i] if i in vocab else vocab['<unk>'])) for i in t33_vocab}
+print(id_map)
 # seq_vocab = [i if i in seq_vocab else 'A' for i in t33_vocab]
 struc_vocab = "pynwrqhgdlvtmfsaeikc#"
 def sum_seq_prob(pred_prob):
@@ -51,7 +54,10 @@ def sum_seq_prob(pred_prob):
     B, N, C = pred_prob.shape
     pred_prob = pred_prob[:, :, 5:425]
     pred_prob = pred_prob.reshape(B, N, 20, 21).sum(dim=-1)
-    pred_prob = pred_prob[:, :, id_map]
+    pred_prob = pred_prob[:, :, aa_id_map]
+    left_pad = pred_prob[:, :, :4]
+    right_pad = torch.ones(B, N, 9).to(pred_prob)*(-1e4)
+    pred_prob = torch.cat((left_pad, pred_prob, right_pad), dim=2)
     return pred_prob
 
 
@@ -107,7 +113,11 @@ class ESM2WithStructuralAdatper(nn.Module):
         # freeze pretrained parameters
         for pname, param in model.named_parameters():
             if 'adapter' not in pname:
+                print('Fix', pname)
                 param.requires_grad = False
+            else:
+                print('Train', pname)
+
         return model 
 
     def __init__(
@@ -215,7 +225,13 @@ class ESM2WithStructuralAdatper(nn.Module):
         assert tokens.ndim == 2
         padding_mask = tokens.eq(self.padding_idx)  # B, T
 
-        x = self.embed_scale * self.embed_tokens(tokens)
+         
+        _tokens = torch.ones_like(tokens)
+        for i in range(tokens.shape[0]):
+            for j in range(tokens.shape[1]):
+                _tokens[i][j] = id_map[tokens[i][j].item()]
+        _tokens = _tokens.to(tokens)
+        x = self.embed_scale * self.embed_tokens(_tokens)
 
         if self.token_dropout:
             x.masked_fill_((tokens == self.mask_idx).unsqueeze(-1), 0.0)
