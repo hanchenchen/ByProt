@@ -27,12 +27,40 @@ from esm.modules import (
 )
 from esm.multihead_attention import MultiheadAttention
 from byprot.utils.config import compose_config as Cfg, merge_config
+from transformers import EsmTokenizer, EsmForMaskedLM, EsmModel
+
+
+tokenizer = EsmTokenizer.from_pretrained("/hanchenchen/BACKUP_20230628/EVE/SS/ss_650m_0606")
+
+vocab = tokenizer.get_vocab()
+t33_vocab = ['<cls>', '<pad>', '<eos>', '<unk>', 'L', 'A', 'G', 'V', 'S', 'E', 'R', 'T', 'I', 'D', 'P', 'K', 'Q', 'N', 'F', 'Y', 'M', 'H', 'W', 'C', 'X', 'B', 'U', 'Z', 'O', '.', '-', '<null_1>', '<mask>']
+seq_vocab = "ACDEFGHIKLMNPQRSTVWY#"
+id_map = [seq_vocab.index(i) if i in seq_vocab else 0 for i in t33_vocab]
+# seq_vocab = [i if i in seq_vocab else 'A' for i in t33_vocab]
+struc_vocab = "pynwrqhgdlvtmfsaeikc#"
+def sum_seq_prob(pred_prob):
+    """
+    
+    Args:
+        pred_prob: [N, vocab_size]
+
+    Returns:
+        seq_prob:   [N, 20]
+    """
+    
+    B, N, C = pred_prob.shape
+    pred_prob = pred_prob[:, :, 5:425]
+    pred_prob = pred_prob.reshape(B, N, 20, 21).sum(dim=-1)
+    pred_prob = pred_prob[:, :, id_map]
+    return pred_prob
+
 
 class ESM2WithStructuralAdatper(nn.Module):
     @classmethod
     def from_pretrained(cls, args, override_args=None, name='esm2_t33_650M_UR50D'):
         import esm
         pretrained_model, alphabet = esm.pretrained.load_model_and_alphabet_hub(name)
+        print(pretrained_model.state_dict().keys(), alphabet.all_toks)
 
         pretrained_args = Cfg(
             num_layers=pretrained_model.num_layers, 
@@ -50,7 +78,29 @@ class ESM2WithStructuralAdatper(nn.Module):
         )
 
         model = cls(args, deepcopy(alphabet)) 
-        model.load_state_dict(pretrained_model.state_dict(), strict=False)        
+
+        ckpt_path = "/hanchenchen/BACKUP_20230628/EVE/SS/650M/esm2_t33_650M_UR50D_foldseek_plddt70_iter2900448.pt"
+        model_data = torch.load(ckpt_path, map_location="cpu")
+
+        # Convert the keys
+        weights = {k.replace("esm.encoder.layer", "layers"): v for k, v in model_data["model"].items()}
+        weights = {k.replace("attention.self", "self_attn"): v for k, v in weights.items()}
+        weights = {k.replace("key", "k_proj"): v for k, v in weights.items()}
+        weights = {k.replace("query", "q_proj"): v for k, v in weights.items()}
+        weights = {k.replace("value", "v_proj"): v for k, v in weights.items()}
+        weights = {k.replace("attention.output.dense", "self_attn.out_proj"): v for k, v in weights.items()}
+        weights = {k.replace("attention.LayerNorm", "self_attn_layer_norm"): v for k, v in weights.items()}
+        weights = {k.replace("intermediate.dense", "fc1"): v for k, v in weights.items()}
+        weights = {k.replace("output.dense", "fc2"): v for k, v in weights.items()}
+        weights = {k.replace("LayerNorm", "final_layer_norm"): v for k, v in weights.items()}
+        weights = {k.replace("esm.embeddings.word_embeddings", "embed_tokens"): v for k, v in weights.items()}
+        weights = {k.replace("rotary_embeddings", "rot_emb"): v for k, v in weights.items()}
+        weights = {k.replace("embeddings.LayerNorm", "embed_layer_norm"): v for k, v in weights.items()}
+        weights = {k.replace("esm.encoder.", ""): v for k, v in weights.items()}
+        weights = {k.replace("lm_head.decoder.weight", "lm_head.weight"): v for k, v in weights.items()}
+
+
+        model.load_state_dict(weights, strict=False)        
 
         del pretrained_model
 
@@ -77,7 +127,7 @@ class ESM2WithStructuralAdatper(nn.Module):
         if not isinstance(alphabet, esm.data.Alphabet):
             alphabet = esm.data.Alphabet.from_architecture(alphabet)
         self.alphabet = alphabet
-        self.alphabet_size = len(alphabet)
+        self.alphabet_size = 446 # len(alphabet)
         self.padding_idx = alphabet.padding_idx
         self.mask_idx = alphabet.mask_idx
         self.cls_idx = alphabet.cls_idx
@@ -220,6 +270,7 @@ class ESM2WithStructuralAdatper(nn.Module):
         if (layer_idx + 1) in repr_layers:
             hidden_representations[layer_idx + 1] = x
         x = self.lm_head(x)
+        x = sum_seq_prob(x)
 
         result = {"logits": x, "representations": hidden_representations}
         if need_head_weights:
