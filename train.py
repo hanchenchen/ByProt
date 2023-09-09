@@ -38,6 +38,8 @@ root = pyrootutils.setup_root(
 import hydra
 from omegaconf import DictConfig
 
+import sys
+sys.path.append('/hanchenchen/ByProt/src')
 
 @hydra.main(version_base='1.1', config_path=f"{root}/configs", config_name="config.yaml")
 def main(config: DictConfig):

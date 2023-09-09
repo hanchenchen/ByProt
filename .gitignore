@@ -156,3 +156,6 @@ run/logs
 
 # pdb
 *.pdb
+*.whl
+workspace/
+lzma.py
