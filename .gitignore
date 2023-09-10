@@ -156,3 +156,7 @@ run/logs
 
 # pdb
 *.pdb
+*.whl
+workspace/
+lzma.py
+ss_650m_0606/
