@@ -95,6 +95,7 @@ class IterativeRefinementGenerator(object):
 
             # 2.1: predict
             decoder_out = model.forward_decoder(
+                batch=batch,
                 prev_decoder_out=prev_decoder_out,
                 encoder_out=encoder_out,
                 need_attn_weights=need_attn_weights

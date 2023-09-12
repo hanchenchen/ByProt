@@ -21,12 +21,33 @@ from torch.utils.data.sampler import BatchSampler, SequentialSampler
 
 
 class Alphabet(object):
-    def __init__(self, name='esm', featurizer='cath', alphabet_cfg={}, featurizer_cfg={}):
+    def __init__(self, name='esm', featurizer='cath', alphabet_cfg={}, featurizer_cfg={}, foldseek=False):
         self.name = name
         self._alphabet = None
 
         if name == 'esm':
             self._alphabet = esm.Alphabet.from_architecture('ESM-1b')
+            # standard_toks = proteinseq_toks["toks"]
+            # prepend_toks = ("<cls>", "<pad>", "<eos>", "<unk>")
+            # append_toks = ("<mask>",)
+            # prepend_bos = True
+            # append_eos = True
+            # use_msa = False
+            self.add_special_tokens = True
+        elif name == 'esm_foldseek':
+            seq_vocab = "ACDEFGHIKLMNPQRSTVWY#"
+            struc_vocab = "pynwrqhgdlvtmfsaeikc#"
+            standard_toks = []
+            for aa_token in seq_vocab:
+                for struc_token in struc_vocab:
+                    standard_toks.append(aa_token+struc_token)
+            self._alphabet = esm.Alphabet(
+                standard_toks=standard_toks,
+                prepend_toks=["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"],
+                append_toks=[],
+                prepend_bos=True,
+                append_eos=True
+            )
             self.add_special_tokens = True
         elif name == 'protein_mpnn':
             self._alphabet = esm.Alphabet(
@@ -71,6 +92,8 @@ class Alphabet(object):
         return self._featurizer(raw_batch, **kwds)
 
     def decode(self, batch_ids, return_as='str', remove_special=False):
+        if self.name == 'esm_foldseek':
+            return self.decode_ours(batch_ids, return_as='str', remove_special=False)
         ret = []
         for ids in batch_ids.cpu():
             if return_as == 'str':
@@ -83,6 +106,24 @@ class Alphabet(object):
                         .replace(self.get_tok(self.unk_idx), '-')
             elif return_as == 'list':
                 line = [self.get_tok(id) for id in ids]
+            ret.append(line)
+        return ret
+
+    def decode_ours(self, batch_ids, return_as='str', remove_special=False):
+        vocab = ["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"] + list("ACDEFGHIKLMNPQRSTVWY#")
+        ret = []
+
+        for ids in batch_ids.cpu():
+            if return_as == 'str':
+                line = ''.join([vocab[id] for id in ids])
+                if remove_special:
+                    line = line.replace(vocab[0], '_') \
+                        .replace(vocab[1], '') \
+                        .replace(vocab[2], '') \
+                        .replace(vocab[3], '') \
+                        .replace(vocab[4], '-')
+            elif return_as == 'list':
+                line = [vocab[id] for id in ids]
             ret.append(line)
         return ret
 

@@ -113,6 +113,9 @@ class Designer:
 
     def _featurize(self):
         batch = self.alphabet.featurize(raw_batch=[self._structure])
+        for k,v in batch.items():
+            if isinstance(v, (torch.Tensor, )):
+                print(k, v.shape, v[0])
 
         if self.cfg.cuda:
             batch = utils.recursive_to(batch, self._device)
@@ -136,6 +139,7 @@ class Designer:
 
         output_tokens = outputs[0]
         output_tokens = self.alphabet.decode(output_tokens, remove_special=True)
+        print(output_tokens)
 
         self._predictions = GenOut(
             output_tokens=output_tokens, 
@@ -148,6 +152,7 @@ class Designer:
         native_seq = self._structure['seq']
 
         for prediction in self._predictions.output_tokens:
+            print("def calculate_metrics", native_seq, prediction)
             rec = np.mean([(a==b) for a, b in zip(native_seq, prediction)])
             print(f"prediction: {prediction}")
             print(f"recovery: {rec}")

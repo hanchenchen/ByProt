@@ -64,7 +64,7 @@ def CATH(
             name = entry['name']
 
             # Convert raw coords to np arrays
-            for key, val in entry['coords'].items():
+            for key, val in entry['coord'].items():
                 entry['coords'][key] = np.asarray(val, dtype=np.float32)
 
             # Check if in alphabet
@@ -166,6 +166,24 @@ class CoordBatchConverter(esm.data.BatchConverter):
         self.coord_pad_inf = coord_pad_inf
         self.to_pifold_format = to_pifold_format
         self.coord_nan_to_zero = coord_nan_to_zero
+        self.aa_tokens_batch_converter = esm.data.BatchConverter(
+            esm.Alphabet(
+                standard_toks=list("ACDEFGHIKLMNPQRSTVWY#"),
+                prepend_toks=["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"],
+                append_toks=[],
+                prepend_bos=True,
+                append_eos=True
+            )
+        )
+        self.struc_tokens_batch_converter = esm.data.BatchConverter(
+            esm.Alphabet(
+                standard_toks=list("pynwrqhgdlvtmfsaeikc#"),
+                prepend_toks=["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"],
+                append_toks=[],
+                prepend_bos=True,
+                append_eos=True
+            )
+        )
 
     def __call__(self, raw_batch: Sequence[Tuple[Sequence, str]], device=None):
         """
@@ -184,7 +202,9 @@ class CoordBatchConverter(esm.data.BatchConverter):
         """
         # self.alphabet.cls_idx = self.alphabet.get_idx("<cath>")
         batch = []
-        for coords, confidence, seq in raw_batch:
+        aa_token_batch = []
+        struc_token_batch = []
+        for coords, confidence, seq, aa_seq, struc_seq in raw_batch:
             if confidence is None:
                 confidence = 1.
             if isinstance(confidence, float) or isinstance(confidence, int):
@@ -192,8 +212,12 @@ class CoordBatchConverter(esm.data.BatchConverter):
             if seq is None:
                 seq = 'X' * len(coords)
             batch.append(((coords, confidence), seq))
+            aa_token_batch.append(((coords, confidence), aa_seq))
+            struc_token_batch.append(((coords, confidence), struc_seq))
 
         coords_and_confidence, strs, tokens = super().__call__(batch)
+        _, _, aa_tokens = self.aa_tokens_batch_converter(aa_token_batch)
+        _, _, struc_tokens = self.struc_tokens_batch_converter(struc_token_batch)
 
         if self.coord_pad_inf:
             # pad beginning and end of each protein due to legacy reasons
@@ -225,6 +249,8 @@ class CoordBatchConverter(esm.data.BatchConverter):
             confidence = confidence.to(device)
             tokens = tokens.to(device)
             lengths = lengths.to(device)
+            aa_tokens = tokens.to(device)
+            struc_tokens = tokens.to(device)
 
         coord_padding_mask = torch.isnan(coords[:, :, 0, 0])
         coord_mask = torch.isfinite(coords.sum([-2, -1]))
@@ -233,9 +259,9 @@ class CoordBatchConverter(esm.data.BatchConverter):
         if self.coord_nan_to_zero:
             coords[torch.isnan(coords)] = 0.
 
-        return coords, confidence, strs, tokens, lengths, coord_mask
+        return coords, confidence, strs, tokens, aa_tokens, struc_tokens, lengths, coord_mask
 
-    def from_lists(self, coords_list, confidence_list=None, seq_list=None, device=None):
+    def from_lists(self, coords_list, confidence_list=None, seq_list=None, aa_seqs=None, struc_seqs=None, device=None):
         """
         Args:
             coords_list: list of length batch_size, each item is a list of
@@ -259,7 +285,7 @@ class CoordBatchConverter(esm.data.BatchConverter):
             confidence_list = [None] * batch_size
         if seq_list is None:
             seq_list = [None] * batch_size
-        raw_batch = zip(coords_list, confidence_list, seq_list)
+        raw_batch = zip(coords_list, confidence_list, seq_list, aa_seqs, struc_seqs)
         return self.__call__(raw_batch, device)
 
     @staticmethod
@@ -383,24 +409,36 @@ class Featurizer(object):
         self.atoms = atoms
 
     def __call__(self, raw_batch: dict):
-        seqs, coords, names = [], [], []
+        seqs, coords, names, aa_seqs, struc_seqs = [], [], [], [], []
         for entry in raw_batch:
             # [L, 3] x 4 -> [L, 4, 3]
             if isinstance(entry['coords'], dict):
+                # for atom in self.atoms:
+                #     print(entry['coords'][atom].shape)
                 coords.append(np.stack([entry['coords'][atom] for atom in self.atoms], 1))
             else:
                 coords.append(entry['coords'])
-            seqs.append(entry['seq'])
+            seqs.append(entry['aa_structure_token'])
             names.append(entry['name'])
+            aa_seqs.append(entry['aa_token'])
+            struc_seqs.append(entry['structure_token'])
+        # {"coords":
+        #  "seq": "PFELSGKWITSYIGSSDLEKIGENAPFQVFMRSIEFDDKESKVYLNFFSKENGICEEFSLIGTKQEGNTYDVNYAGNNKFVVSYASETALIISNINVDEEGDKTIMTGLLGKGTDIEDQDLEKFKEVTRENGIPEENIVNIIERDDCPA", 
+        #  "name": "1a3y_B-P81245", 
+        #  "aa_token": "PFELSGKWITSYIGSSDLEKIGENAPFQVFMRSIEFDDKESKVYLNFFSKENGICEEFSLIGTKQEGNTYDVNYAGNNKFVVSYASETALIISNINVDEEGDKTIMTGLLGKGTDIEDQDLEKFKEVTRENGIPEENIVNIIERDDCPA", 
+        #  "structure_token": "dqlqwdfkfwfkkfkpdlqccdaqhqpvwgwgtwgqdppqqkiwtwtwgdhpndtdidiwiwghdpdqwiwtdgqaikikgqpdddnfktkiwmwgqhpvrdimtmiiiitpdndddpvsvvvscvvcvvsvtdpvrmdgsvvvdpddd", 
+        #  "aa_structure_token": "PdFqElLqSwGdKfWkIfTwSfYkIkGfSkSpDdLlEqKcIcGdEaNqAhPqFpQvVwFgMwRgStIwEgFqDdDpKpEqSqKkViYwLtNwFtFwSgKdEhNpGnIdCtEdEiFdSiLwIiGwTgKhQdEpGdNqTwYiDwVtNdYgAqGaNiNkKiFkVgVqSpYdAdSdEnTfAkLtIkIiSwNmIwNgVqDhEpEvGrDdKiTmItMmTiGiLiLiGtKpGdTnDdIdEdDpQvDsLvEvKvFsKcEvVvTcRvEvNsGvItPdEpEvNrImVdNgIsIvEvRvDdDpCdPdAd"}
 
-        coords, confidence, strs, tokens, lengths, coord_mask = self.batcher.from_lists(
-            coords_list=coords, confidence_list=None, seq_list=seqs
+        coords, confidence, strs, tokens, aa_tokens, struc_tokens, lengths, coord_mask = self.batcher.from_lists(
+            coords_list=coords, confidence_list=None, seq_list=seqs, aa_seqs=aa_seqs, struc_seqs=struc_seqs
         )
 
         # coord_mask = coord_mask > 0.5
         batch = {
+            'aa_tokens': aa_tokens,
+            'struc_tokens': struc_tokens,
             'coords': coords,
-            'tokens': tokens,
+            'tokens': aa_tokens,
             'confidence': confidence,
             'coord_mask': coord_mask,
             'lengths': lengths,
