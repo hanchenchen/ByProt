@@ -92,8 +92,8 @@ class Alphabet(object):
         return self._featurizer(raw_batch, **kwds)
 
     def decode(self, batch_ids, return_as='str', remove_special=False):
-        if self.name == 'esm_foldseek':
-            return self.decode_ours(batch_ids, return_as='str', remove_special=False)
+        # if self.name == 'esm_foldseek':
+        #     return self.decode_ours(batch_ids, return_as='str', remove_special=False)
         ret = []
         for ids in batch_ids.cpu():
             if return_as == 'str':
@@ -109,23 +109,23 @@ class Alphabet(object):
             ret.append(line)
         return ret
 
-    def decode_ours(self, batch_ids, return_as='str', remove_special=False):
-        vocab = ["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"] + list("ACDEFGHIKLMNPQRSTVWY#")
-        ret = []
+    # def decode_ours(self, batch_ids, return_as='str', remove_special=False):
+    #     vocab = ["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"] + list("ACDEFGHIKLMNPQRSTVWY#")
+    #     ret = []
 
-        for ids in batch_ids.cpu():
-            if return_as == 'str':
-                line = ''.join([vocab[id] for id in ids])
-                if remove_special:
-                    line = line.replace(vocab[0], '_') \
-                        .replace(vocab[1], '') \
-                        .replace(vocab[2], '') \
-                        .replace(vocab[3], '') \
-                        .replace(vocab[4], '-')
-            elif return_as == 'list':
-                line = [vocab[id] for id in ids]
-            ret.append(line)
-        return ret
+    #     for ids in batch_ids.cpu():
+    #         if return_as == 'str':
+    #             line = ''.join([vocab[id] for id in ids])
+    #             if remove_special:
+    #                 line = line.replace(vocab[0], '_') \
+    #                     .replace(vocab[1], '') \
+    #                     .replace(vocab[2], '') \
+    #                     .replace(vocab[3], '') \
+    #                     .replace(vocab[4], '-')
+    #         elif return_as == 'list':
+    #             line = [vocab[id] for id in ids]
+    #         ret.append(line)
+    #     return ret
 
 
 T_co = TypeVar("T_co", covariant=True)

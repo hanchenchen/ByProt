@@ -6,7 +6,7 @@ conda activate ${env_name}
 cd  /hanchenchen/ByProt 
 exp=fixedbb/lm_design_ours_650m 
 dataset=cath_4.2
-name=fixedbb/${dataset}/0913_lm_design_esm2_foldseek_650m  
+name=fixedbb/${dataset}/0914_lm_design_esm2_foldseek_650m_mlm_t446 
 CUDA_LAUNCH_BLOCKING=1 /root/miniconda3/envs/ByProt/bin/python ./train.py \
 name=${name} experiment=${exp} datamodule=${dataset}  \
 logger=tensorboard trainer=ddp_fp16

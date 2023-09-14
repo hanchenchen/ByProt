@@ -46,15 +46,23 @@ class ProteinMPNNCMLM(FixedBackboneDesignEncoderDecoder):
             dropout=self.cfg.dropout
         )
 
-        if self.cfg.use_esm_alphabet:
-            alphabet = Alphabet('esm', 'cath')
-            self.padding_idx = alphabet.padding_idx
-            self.mask_idx = alphabet.mask_idx
-        else:
-            alphabet = None
-            self.padding_idx = 0
-            self.mask_idx = 1
-
+        seq_vocab = "ACDEFGHIKLMNPQRSTVWY#"
+        struc_vocab = "pynwrqhgdlvtmfsaeikc#"
+        standard_toks = []
+        for aa_token in seq_vocab:
+            for struc_token in struc_vocab:
+                standard_toks.append(aa_token+struc_token)
+        import esm
+        alphabet = esm.Alphabet(
+                standard_toks=standard_toks,
+                prepend_toks=["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"],
+                append_toks=[],
+                prepend_bos=False,
+                append_eos=False
+            )
+        self.padding_idx = alphabet.padding_idx
+        self.mask_idx = alphabet.mask_idx
+        
         self.decoder = MPNNSequenceDecoder(
             n_vocab=self.cfg.n_vocab,
             d_model=self.cfg.d_model,

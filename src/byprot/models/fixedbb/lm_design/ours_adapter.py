@@ -64,6 +64,24 @@ def merge_aa_struc_func(aa_tokens, struc_tokens):
     return aa_struc_tokens
 
 
+def merge_mixed_struc(mixed_tokens, struc_tokens):
+    B, N = mixed_tokens.shape
+    ret_tokens = torch.zeros_like(mixed_tokens)
+    for i in range(B):
+        for j in range(N):
+            mixed_token = aa_struc_vocab[mixed_tokens[i][j]]
+            struc_token = struc_vocab[struc_tokens[i][j]]
+            if struc_token in append_toks:
+                ret_tokens[i][j] = aa_struc_vocab.index(struc_token)
+            elif mixed_token in append_toks:
+                mixed_token = '#'
+                aa_struc_token = mixed_token+struc_token
+                ret_tokens[i][j] = aa_struc_vocab.index(aa_struc_token)
+            else:
+                ret_tokens[i][j] = aa_struc_vocab.index(mixed_token)
+    return ret_tokens
+
+
 @register_model('ours_adapter')
 class ESM2Adapter(FixedBackboneDesignEncoderDecoder):
     _default_cfg = ESM2AdapterConfig()
@@ -84,7 +102,7 @@ class ESM2Adapter(FixedBackboneDesignEncoderDecoder):
         #     if isinstance(v, (torch.Tensor, )):
         #         print(k, v.shape)
         encoder_logits, encoder_out = self.encoder(batch, return_feats=True, **kwargs)
-        encoder_logits = encoder_logits[:, :, id_map]
+        # encoder_logits = encoder_logits[:, :, id_map]
 
         encoder_out['feats'] = encoder_out['feats'].detach()
 
@@ -93,7 +111,7 @@ class ESM2Adapter(FixedBackboneDesignEncoderDecoder):
         #     merge_aa_struc(init_pred, batch['struc_tokens']),
         #     merge_aa_struc_func(init_pred, batch['struc_tokens']),
         # )
-        init_pred = merge_aa_struc_func(init_pred, batch['struc_tokens'])
+        init_pred = merge_mixed_struc(init_pred, batch['struc_tokens'])
         init_pred = torch.where(batch['coord_mask'], init_pred, batch['prev_tokens'])
 
         esm_logits = self.decoder(
@@ -108,7 +126,7 @@ class ESM2Adapter(FixedBackboneDesignEncoderDecoder):
 
     def forward_encoder(self, batch):
         encoder_logits, encoder_out = self.encoder(batch, return_feats=True)
-        encoder_logits = encoder_logits[:, :, id_map]
+        # encoder_logits = encoder_logits[:, :, id_map]
 
         init_pred = encoder_logits.argmax(-1)
         init_pred = torch.where(batch['coord_mask'], init_pred, batch['prev_tokens'])
@@ -128,7 +146,7 @@ class ESM2Adapter(FixedBackboneDesignEncoderDecoder):
         # output_masks = output_tokens.eq(self.mask_idx)  # & coord_mask
         output_masks = output_tokens.ne(self.padding_idx)  # & coord_mask
 
-        output_tokens_w_foldseek = merge_aa_struc_func(output_tokens, batch['struc_tokens'])
+        output_tokens_w_foldseek = merge_mixed_struc(output_tokens, batch['struc_tokens'])
         esm_out = self.decoder(
             tokens=output_tokens_w_foldseek,
             encoder_out=encoder_out,

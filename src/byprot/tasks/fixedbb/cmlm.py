@@ -20,6 +20,18 @@ from byprot.datamodules.datasets.data_utils import Alphabet
 
 log = utils.get_logger(__name__)
 
+seq_vocab = "ACDEFGHIKLMNPQRSTVWY#"
+struc_vocab = "pynwrqhgdlvtmfsaeikc#"
+standard_toks = []
+for aa_token in seq_vocab:
+    for struc_token in struc_vocab:
+        standard_toks.append(aa_token+struc_token)
+append_toks=["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"]
+
+aa_struc_vocab = append_toks + standard_toks
+seq_vocab = append_toks + list(seq_vocab)
+struc_vocab = append_toks + list(struc_vocab)
+
 
 def new_arange(x, *size):
     """
@@ -304,11 +316,24 @@ class CMLM(TaskLitModule):
             return self.alphabet.decode(output_tokens)
         return output_tokens
 
+    def convert_mixed_tokens_to_aa_tokens(self, mixed_tokens):
+        B, N = mixed_tokens.shape
+        aa_tokens = torch.zeros_like(mixed_tokens)
+        for i in range(B):
+            for j in range(N):
+                mixed_token = aa_struc_vocab[mixed_tokens[i][j]]
+                if mixed_token in append_toks:
+                    aa_tokens[i][j] = seq_vocab.index(mixed_token)
+                else:
+                    aa_tokens[i][j] = seq_vocab.index(mixed_token[0])
+        return aa_tokens
+
     def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0, log_metrics=True) -> Any:
         coord_mask = batch['coord_mask']
-        tokens = batch['tokens']
-
+        tokens = batch['aa_tokens']
+        
         pred_tokens = self.forward(batch, return_ids=True)
+        pred_tokens = self.convert_mixed_tokens_to_aa_tokens(pred_tokens)
 
         # NOTE: use esm-1b to refine
         # pred_tokens = self.esm_refine(

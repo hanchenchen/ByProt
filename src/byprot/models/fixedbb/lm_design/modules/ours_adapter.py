@@ -28,24 +28,24 @@ from esm.modules import (
 from esm.multihead_attention import MultiheadAttention
 from byprot.utils.config import compose_config as Cfg, merge_config
 
-prepend_toks=["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"]
-seq_vocab = "ACDEFGHIKLMNPQRSTVWY#"
-struc_vocab = "pynwrqhgdlvtmfsaeikc#"
-def sum_seq_prob(pred_prob):
-    """
+# prepend_toks=["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"]
+# seq_vocab = "ACDEFGHIKLMNPQRSTVWY#"
+# struc_vocab = "pynwrqhgdlvtmfsaeikc#"
+# def sum_seq_prob(pred_prob):
+#     """
     
-    Args:
-        pred_prob: [N, vocab_size]
+#     Args:
+#         pred_prob: [N, vocab_size]
 
-    Returns:
-        seq_prob:   [N, 20]
-    """
+#     Returns:
+#         seq_prob:   [N, 20]
+#     """
     
-    B, N, C = pred_prob.shape
-    prepend_toks_prob = pred_prob[:, :, :5]
-    aa_toks_prob = pred_prob[:, :, 5:425].reshape(B, N, 20, 21).sum(dim=-1)
-    toks_prob = torch.cat([prepend_toks_prob, aa_toks_prob], dim=-1)
-    return toks_prob
+#     B, N, C = pred_prob.shape
+#     prepend_toks_prob = pred_prob[:, :, :5]
+#     aa_toks_prob = pred_prob[:, :, 5:425].reshape(B, N, 20, 21).sum(dim=-1)
+#     toks_prob = torch.cat([prepend_toks_prob, aa_toks_prob], dim=-1)
+#     return toks_prob
 
 class ESM2FoldseekWithStructuralAdatper(nn.Module):
     @classmethod
@@ -272,7 +272,7 @@ class ESM2FoldseekWithStructuralAdatper(nn.Module):
         if (layer_idx + 1) in repr_layers:
             hidden_representations[layer_idx + 1] = x
         x = self.lm_head(x)
-        x = sum_seq_prob(x)
+        # x = sum_seq_prob(x)
 
         result = {"logits": x, "representations": hidden_representations}
         if need_head_weights:

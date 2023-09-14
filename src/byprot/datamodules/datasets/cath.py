@@ -440,7 +440,7 @@ class Featurizer(object):
             'aa_tokens': aa_tokens,
             'struc_tokens': struc_tokens,
             'coords': coords,
-            'tokens': aa_tokens,
+            'tokens': tokens,
             'confidence': confidence,
             'coord_mask': coord_mask,
             'lengths': lengths,
