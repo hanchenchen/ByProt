@@ -53,6 +53,17 @@ def merge_aa_struc(aa_tokens, struc_tokens):
                 aa_struc_tokens[i][j] = aa_struc_vocab.index(aa_struc_token)
     return aa_struc_tokens
 
+def merge_aa_struc_func(aa_tokens, struc_tokens):
+    B, N = aa_tokens.shape
+    aa_tokens = aa_tokens-5
+    aa_tokens = aa_tokens.masked_fill(aa_tokens<0, 20)
+
+    struc_tokens_ = struc_tokens-5
+    aa_struc_tokens = aa_tokens*21+struc_tokens_+5
+    aa_struc_tokens[struc_tokens<5] = struc_tokens[struc_tokens<5]
+    return aa_struc_tokens
+
+
 @register_model('ours_adapter')
 class ESM2Adapter(FixedBackboneDesignEncoderDecoder):
     _default_cfg = ESM2AdapterConfig()
@@ -78,7 +89,11 @@ class ESM2Adapter(FixedBackboneDesignEncoderDecoder):
         encoder_out['feats'] = encoder_out['feats'].detach()
 
         init_pred = encoder_logits.argmax(-1)
-        init_pred = merge_aa_struc(init_pred, batch['struc_tokens'])
+        # assert (merge_aa_struc(init_pred, batch['struc_tokens']) == merge_aa_struc_func(init_pred, batch['struc_tokens'])).all(), (
+        #     merge_aa_struc(init_pred, batch['struc_tokens']),
+        #     merge_aa_struc_func(init_pred, batch['struc_tokens']),
+        # )
+        init_pred = merge_aa_struc_func(init_pred, batch['struc_tokens'])
         init_pred = torch.where(batch['coord_mask'], init_pred, batch['prev_tokens'])
 
         esm_logits = self.decoder(
@@ -113,7 +128,7 @@ class ESM2Adapter(FixedBackboneDesignEncoderDecoder):
         # output_masks = output_tokens.eq(self.mask_idx)  # & coord_mask
         output_masks = output_tokens.ne(self.padding_idx)  # & coord_mask
 
-        output_tokens_w_foldseek = merge_aa_struc(output_tokens, batch['struc_tokens'])
+        output_tokens_w_foldseek = merge_aa_struc_func(output_tokens, batch['struc_tokens'])
         esm_out = self.decoder(
             tokens=output_tokens_w_foldseek,
             encoder_out=encoder_out,
