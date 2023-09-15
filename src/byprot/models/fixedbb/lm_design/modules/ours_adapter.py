@@ -78,8 +78,8 @@ class ESM2FoldseekWithStructuralAdatper(nn.Module):
                 standard_toks=standard_toks,
                 prepend_toks=["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"],
                 append_toks=[],
-                prepend_bos=False,
-                append_eos=False
+                prepend_bos=True,
+                append_eos=True
             )
         model = cls(args, deepcopy(alphabet)) 
 
@@ -128,7 +128,20 @@ class ESM2FoldseekWithStructuralAdatper(nn.Module):
         self.embed_dim = args.embed_dim
         self.attention_heads = args.attention_heads
 
-        self.alphabet = alphabet
+        seq_vocab = "ACDEFGHIKLMNPQRSTVWY#"
+        struc_vocab = "pynwrqhgdlvtmfsaeikc#"
+        standard_toks = []
+        for aa_token in seq_vocab:
+            for struc_token in struc_vocab:
+                standard_toks.append(aa_token+struc_token)
+        alphabet = esm.Alphabet(
+                standard_toks=standard_toks,
+                prepend_toks=["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"],
+                append_toks=[],
+                prepend_bos=True,
+                append_eos=True
+            )
+
         self.alphabet_size = len(alphabet)
         self.padding_idx = alphabet.padding_idx
         self.mask_idx = alphabet.mask_idx

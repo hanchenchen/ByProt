@@ -29,6 +29,20 @@ class ProteinMPNNConfig:
     use_esm_alphabet: bool = False
 
 
+t33_vocab = ['<cls>', '<pad>', '<eos>', '<unk>', 'L', 'A', 'G', 'V', 'S', 'E', 'R', 'T', 'I', 'D', 'P', 'K', 'Q', 'N', 'F', 'Y', 'M', 'H', 'W', 'C', 'X', 'B', 'U', 'Z', 'O', '.', '-', '<null_1>', '<mask>']
+seq_vocab = "ACDEFGHIKLMNPQRSTVWY#"
+struc_vocab = "pynwrqhgdlvtmfsaeikc#"
+standard_toks = []
+for aa_token in seq_vocab:
+    for struc_token in struc_vocab:
+        standard_toks.append(aa_token+struc_token)
+append_toks=["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"]
+
+aa_struc_vocab = append_toks + standard_toks
+seq_vocab = append_toks + list(seq_vocab)
+struc_vocab = append_toks + list(struc_vocab)
+
+
 @register_model('protein_mpnn_cmlm')
 class ProteinMPNNCMLM(FixedBackboneDesignEncoderDecoder):
     _default_cfg = ProteinMPNNConfig()
@@ -46,23 +60,15 @@ class ProteinMPNNCMLM(FixedBackboneDesignEncoderDecoder):
             dropout=self.cfg.dropout
         )
 
-        seq_vocab = "ACDEFGHIKLMNPQRSTVWY#"
-        struc_vocab = "pynwrqhgdlvtmfsaeikc#"
-        standard_toks = []
-        for aa_token in seq_vocab:
-            for struc_token in struc_vocab:
-                standard_toks.append(aa_token+struc_token)
-        import esm
-        alphabet = esm.Alphabet(
-                standard_toks=standard_toks,
-                prepend_toks=["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"],
-                append_toks=[],
-                prepend_bos=False,
-                append_eos=False
-            )
-        self.padding_idx = alphabet.padding_idx
-        self.mask_idx = alphabet.mask_idx
-        
+        if self.cfg.use_esm_alphabet:
+            alphabet = Alphabet('esm', 'cath')
+            self.padding_idx = alphabet.padding_idx
+            self.mask_idx = alphabet.mask_idx
+        else:
+            alphabet = None
+            self.padding_idx = 0
+            self.mask_idx = 1
+
         self.decoder = MPNNSequenceDecoder(
             n_vocab=self.cfg.n_vocab,
             d_model=self.cfg.d_model,
@@ -74,10 +80,21 @@ class ProteinMPNNCMLM(FixedBackboneDesignEncoderDecoder):
             alphabet=alphabet
         )
 
+    def convert_aa_to_t33(self, aa_tokens):
+        B, N = aa_tokens.shape
+        t33_tokens = torch.zeros_like(aa_tokens)
+        for i in range(B):
+            for j in range(N):
+                aa_token = seq_vocab[aa_tokens[i][j]]
+                if aa_token == '#':
+                    aa_token = '<mask>'
+                t33_tokens[i][j] = t33_vocab.index(aa_token)
+        return t33_tokens
+
     def _forward(self, coords, coord_mask, prev_tokens, token_padding_mask=None, target_tokens=None, return_feats=False, **kwargs):
         coord_mask = coord_mask.float()
         encoder_out = self.encoder(X=coords, mask=coord_mask)
-
+        prev_tokens = self.convert_aa_to_t33(prev_tokens)
         logits, feats = self.decoder(
             prev_tokens=prev_tokens,
             memory=encoder_out, memory_mask=coord_mask,
@@ -98,9 +115,9 @@ class ProteinMPNNCMLM(FixedBackboneDesignEncoderDecoder):
             residue_idx=batch.get('residue_idx', None),
             chain_idx=batch.get('chain_idx', None)
         )
-
+        prev_tokens = self.convert_aa_to_t33(batch['prev_tokens'])
         logits, feats = self.decoder(
-            prev_tokens=batch['prev_tokens'],
+            prev_tokens=prev_tokens,
             memory=encoder_out, 
             memory_mask=coord_mask,
             target_tokens=batch.get('tokens'),
@@ -123,6 +140,7 @@ class ProteinMPNNCMLM(FixedBackboneDesignEncoderDecoder):
         return encoder_out
 
     def forward_decoder(self, prev_decoder_out, encoder_out, need_attn_weights=False):
+        assert 0
         output_tokens = prev_decoder_out['output_tokens']
         output_scores = prev_decoder_out['output_scores']
         step, max_step = prev_decoder_out['step'], prev_decoder_out['max_step']

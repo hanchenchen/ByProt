@@ -71,7 +71,7 @@ class IterativeRefinementGenerator(object):
         encoder_out = model.forward_encoder(batch)
 
         # 1) initialized from all mask tokens
-        initial_output_tokens, initial_output_scores = model.initialize_output_tokens(
+        batch, initial_output_tokens, initial_output_scores = model.initialize_output_tokens(
             batch, encoder_out=encoder_out)
         prev_decoder_out = dict(
             output_tokens=initial_output_tokens,
@@ -88,6 +88,7 @@ class IterativeRefinementGenerator(object):
             attns = [] # list of {'in', 'out', 'attn'} for all iteration
 
         if strategy == 'discrete_diffusion':
+            assert 0
             prev_decoder_out['output_masks'] = model.get_non_special_sym_mask(batch['prev_tokens'])
 
         # iterative refinement

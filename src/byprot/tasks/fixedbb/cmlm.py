@@ -20,6 +20,7 @@ from byprot.datamodules.datasets.data_utils import Alphabet
 
 log = utils.get_logger(__name__)
 
+t33_vocab = ['<cls>', '<pad>', '<eos>', '<unk>', 'L', 'A', 'G', 'V', 'S', 'E', 'R', 'T', 'I', 'D', 'P', 'K', 'Q', 'N', 'F', 'Y', 'M', 'H', 'W', 'C', 'X', 'B', 'U', 'Z', 'O', '.', '-', '<null_1>', '<mask>']
 seq_vocab = "ACDEFGHIKLMNPQRSTVWY#"
 struc_vocab = "pynwrqhgdlvtmfsaeikc#"
 standard_toks = []
@@ -41,7 +42,30 @@ def new_arange(x, *size):
     if len(size) == 0:
         size = x.size()
     return torch.arange(size[-1], device=x.device).expand(*size).contiguous()
+t33_vocab = ['<cls>', '<pad>', '<eos>', '<unk>', 'L', 'A', 'G', 'V', 'S', 'E', 'R', 'T', 'I', 'D', 'P', 'K', 'Q', 'N', 'F', 'Y', 'M', 'H', 'W', 'C', 'X', 'B', 'U', 'Z', 'O', '.', '-', '<null_1>', '<mask>']
+seq_vocab = "ACDEFGHIKLMNPQRSTVWY#"
+struc_vocab = "pynwrqhgdlvtmfsaeikc#"
+standard_toks = []
+for aa_token in seq_vocab:
+    for struc_token in struc_vocab:
+        standard_toks.append(aa_token+struc_token)
+append_toks=["<cls>", "<pad>", "<eos>", "<unk>", "<mask>"]
 
+aa_struc_vocab = append_toks + standard_toks
+seq_vocab = append_toks + list(seq_vocab)
+struc_vocab = append_toks + list(struc_vocab)
+
+id_map = [t33_vocab.index(i) for i in seq_vocab if i!='#']
+
+def merge_aa_struc_func(aa_tokens, struc_tokens):
+    B, N = aa_tokens.shape
+    aa_tokens = aa_tokens-5
+    aa_tokens = aa_tokens.masked_fill(aa_tokens<0, 20)
+
+    struc_tokens_ = struc_tokens-5
+    aa_struc_tokens = aa_tokens*21+struc_tokens_+5
+    aa_struc_tokens[struc_tokens<5] = struc_tokens[struc_tokens<5]
+    return aa_struc_tokens
 
 @register_task('fixedbb/cmlm')
 class CMLM(TaskLitModule):
@@ -184,6 +208,12 @@ class CMLM(TaskLitModule):
 
         noise = noise or self.hparams.noise
 
+        # if coord_mask.shape[1] < tokens.shape[1]:
+        #     coord_mask = torch.cat([
+        #         coord_mask, 
+        #         (torch.ones(coord_mask.shape[0], tokens.shape[1]-coord_mask.shape[1])==1).to(coord_mask),
+        #         ], dim=1)
+
         if noise == 'full_mask':
             masked_tokens = _full_mask(tokens)
         elif noise == 'random_mask':
@@ -226,11 +256,11 @@ class CMLM(TaskLitModule):
             # loss, logging_output = self.criterion(logits, tokens, label_mask=label_mask)
             # NOTE: use fullseq loss for pLM prediction
             loss, logging_output = self.criterion(
-                logits, tokens,
+                logits, merge_aa_struc_func(batch['tokens'], batch['struc_tokens']),
                 # hack to calculate ppl over coord_mask in test as same other methods
                 label_mask=label_mask if self.stage == 'test' else None
             )
-            encoder_loss, encoder_logging_output = self.criterion(encoder_logits, tokens, label_mask=label_mask)
+            encoder_loss, encoder_logging_output = self.criterion(encoder_logits, batch['tokens'], label_mask=label_mask)
 
             loss = loss + encoder_loss
             logging_output['encoder/nll_loss'] = encoder_logging_output['nll_loss']
