@@ -64,7 +64,7 @@ def CATH(
             name = entry['name']
 
             # Convert raw coords to np arrays
-            for key, val in entry['coords'].items():
+            for key, val in entry['coord'].items():
                 entry['coords'][key] = np.asarray(val, dtype=np.float32)
 
             # Check if in alphabet
